@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useOrg } from '../context/OrgContext';
 import { Document } from '../types';
 import { Save, Upload, X, ArrowRightLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePageTitle } from '../hooks/usePageTitle';
+import CategoryCombobox from './CategoryCombobox';
+import SupplierCombobox from './SupplierCombobox';
 
 export default function DocumentForm() {
   const navigate = useNavigate();
@@ -20,7 +23,8 @@ export default function DocumentForm() {
   usePageTitle(`${getTitle()} | ContaCerta`);
   
   const { state, dispatch } = useApp();
-  const { documents = [], suppliers = [], members = [], costCenters = [] } = state;
+  const { activeOrgId } = useOrg();
+  const { documents = [], members = [], costCenters = [] } = state;
 
   const existingDocument = isEdit ? documents.find(d => d.id === id) : undefined;
 
@@ -32,13 +36,22 @@ export default function DocumentForm() {
     amount: existingDocument?.amount?.toString() || '',
     dueDate: existingDocument?.dueDate || '',
     issueDate: existingDocument?.issueDate || new Date().toISOString().split('T')[0],
-    category: existingDocument?.category || '',
+    categoryId: existingDocument?.categoryId || null,
     costCenterId: existingDocument?.costCenterId || '',
-    supplierId: existingDocument?.supplierId || (initialType === 'payable' ? '' : undefined),
-    memberId: existingDocument?.memberId || (initialType === 'receivable' ? '' : undefined),
+    supplierId: existingDocument?.supplierId || (initialType === 'payable' ? '' : null),
+    memberId: existingDocument?.memberId || (initialType === 'receivable' ? '' : null),
     status: existingDocument?.status || 'open' as Document['status'],
     paymentDate: existingDocument?.paymentDate || '',
   });
+
+  // Reset campos quando o tipo muda
+  useEffect(() => {
+    if (formData.type === 'payable') {
+      setFormData(prev => ({ ...prev, memberId: null }));
+    } else {
+      setFormData(prev => ({ ...prev, supplierId: null }));
+    }
+  }, [formData.type]);
 
   const [attachments, setAttachments] = useState<File[]>([]);
 
@@ -53,10 +66,11 @@ export default function DocumentForm() {
       dueDate: formData.dueDate,
       issueDate: formData.issueDate,
       status: formData.status,
-      category: formData.category,
+      categoryId: formData.categoryId,
       costCenterId: formData.costCenterId,
-      supplierId: formData.type === 'payable' ? formData.supplierId : undefined,
-      memberId: formData.type === 'receivable' ? formData.memberId : undefined,
+      // Regra XOR: apenas um dos dois pode ter valor
+      supplierId: formData.type === 'payable' ? (formData.supplierId || null) : null,
+      memberId: formData.type === 'receivable' ? (formData.memberId || null) : null,
       paymentDate: formData.paymentDate || undefined,
       createdAt: existingDocument?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -86,7 +100,7 @@ export default function DocumentForm() {
     navigate(path);
   };
 
-  const activeCostCenters = costCenters.filter(cc => cc.status === 'active');
+  const activeCostCenters = costCenters;
 
   return (
     <motion.div
@@ -136,20 +150,29 @@ export default function DocumentForm() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {formData.type === 'payable' ? 'Fornecedor' : 'Membro'}
             </label>
-            <select
-              value={formData.type === 'payable' ? formData.supplierId : formData.memberId}
-              onChange={(e) => setFormData({ 
-                ...formData, 
-                [formData.type === 'payable' ? 'supplierId' : 'memberId']: e.target.value 
-              })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Selecione (Opcional)</option>
-              {formData.type === 'payable' 
-                ? suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)
-                : members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
-              }
-            </select>
+            
+            {formData.type === 'payable' ? (
+              <SupplierCombobox
+                value={formData.supplierId}
+                onChange={(supplierId) => setFormData({ ...formData, supplierId })}
+                orgId={activeOrgId || ''}
+                placeholder="Selecione (Opcional)"
+              />
+            ) : (
+              <select
+                value={formData.memberId || ''}
+                onChange={(e) => setFormData({ 
+                  ...formData, 
+                  memberId: e.target.value || null
+                })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Selecione (Opcional)</option>
+                {members.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div>
@@ -164,13 +187,12 @@ export default function DocumentForm() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-             <div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Categoria *</label>
-              <input
-                type="text"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <CategoryCombobox
+                value={formData.categoryId}
+                onChange={(categoryId) => setFormData({ ...formData, categoryId })}
+                documentType={formData.type}
                 placeholder={formData.type === 'payable' ? 'Ex: Aluguel' : 'Ex: Dízimo'}
                 required
               />

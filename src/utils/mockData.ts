@@ -32,12 +32,12 @@ export function generateMockAssets(suppliers: Supplier[]): Asset[] {
 
 export function generateMockCostCenters(): CostCenter[] {
   const costCenters: CostCenter[] = [
-    { id: 'geral', name: 'Administrativo Geral', type: 'ministry', status: 'active', description: 'Despesas e receitas gerais da igreja.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
-    { id: faker.string.uuid(), name: 'Ministério Infantil', type: 'ministry', status: 'active', description: 'Atividades e materiais para crianças.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
-    { id: faker.string.uuid(), name: 'Grupo de Louvor', type: 'group', status: 'active', description: 'Equipamentos e despesas do louvor.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
-    { id: faker.string.uuid(), name: 'Ação Social', type: 'ministry', status: 'active', description: 'Projetos e doações para a comunidade.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
-    { id: faker.string.uuid(), name: 'Festa Junina 2025', type: 'event', status: 'active', description: 'Evento anual da comunidade.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
-    { id: faker.string.uuid(), name: 'Retiro de Casais', type: 'event', status: 'inactive', description: 'Evento concluído no último ano.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
+    { id: 'geral', name: 'Administrativo Geral', type: 'ministry', ministryId: 'ministry-1', description: 'Despesas e receitas gerais da igreja.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
+    { id: faker.string.uuid(), name: 'Ministério Infantil', type: 'ministry', ministryId: 'ministry-2', description: 'Atividades e materiais para crianças.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
+    { id: faker.string.uuid(), name: 'Grupo de Louvor', type: 'group', description: 'Equipamentos e despesas do louvor.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
+    { id: faker.string.uuid(), name: 'Ação Social', type: 'ministry', ministryId: 'ministry-3', description: 'Projetos e doações para a comunidade.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
+    { id: faker.string.uuid(), name: 'Festa Junina 2025', type: 'event', description: 'Evento anual da comunidade.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
+    { id: faker.string.uuid(), name: 'Retiro de Casais', type: 'event', description: 'Evento concluído no último ano.', createdAt: format(new Date(), 'yyyy-MM-dd'), updatedAt: format(new Date(), 'yyyy-MM-dd') },
   ];
   return costCenters;
 }

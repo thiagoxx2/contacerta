@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useOrg } from '../context/OrgContext';
 import { Member } from '../types';
-import { Save, User, Upload } from 'lucide-react';
+import { Save, User, Upload, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePageTitle } from '../hooks/usePageTitle';
-
-const availableMinistries = ['Louvor', 'Mídia', 'Infantil', 'Ação Social', 'Recepção', 'Diaconato', 'Ensino', 'Oração'];
+import { useOrgMinistries } from '../hooks/useOrgMinistries';
+import { listMinistryIdsByMember, setMemberMinistries } from '../services/memberMinistriesService';
 
 export default function MemberForm() {
   const navigate = useNavigate();
@@ -16,7 +17,11 @@ export default function MemberForm() {
   usePageTitle(isEdit ? 'Editar Membro | ContaCerta' : 'Novo Membro | ContaCerta');
   
   const { state, dispatch } = useApp();
+  const { activeOrgId } = useOrg();
   const { members = [] } = state;
+  
+  // Hook para carregar ministérios da organização
+  const { ministries, loading: ministriesLoading, error: ministriesError } = useOrgMinistries(activeOrgId);
 
   const existingMember = isEdit ? members.find(m => m.id === id) : undefined;
 
@@ -43,21 +48,53 @@ export default function MemberForm() {
   });
   
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
+  
+  // Estado para os IDs dos ministérios selecionados (IDs reais do Supabase)
+  const [selectedMinistryIds, setSelectedMinistryIds] = useState<string[]>([]);
+  
+  // Estado para controlar o carregamento dos vínculos existentes
+  const [loadingExistingMinistries, setLoadingExistingMinistries] = useState(false);
 
-  const handleMinistryChange = (ministry: string) => {
-    setFormData(prev => {
-      const newMinistries = prev.ministries.includes(ministry)
-        ? prev.ministries.filter(m => m !== ministry)
-        : [...prev.ministries, ministry];
-      return { ...prev, ministries: newMinistries };
+  // Carregar vínculos existentes em modo de edição
+  useEffect(() => {
+    const loadExistingMinistries = async () => {
+      if (isEdit && id && activeOrgId) {
+        setLoadingExistingMinistries(true);
+        try {
+          const existingMinistryIds = await listMinistryIdsByMember(id, activeOrgId);
+          setSelectedMinistryIds(existingMinistryIds);
+        } catch (error) {
+          console.error('Erro ao carregar ministérios do membro:', error);
+        } finally {
+          setLoadingExistingMinistries(false);
+        }
+      }
+    };
+
+    loadExistingMinistries();
+  }, [isEdit, id, activeOrgId]);
+
+  const handleMinistryChange = (ministryId: string) => {
+    setSelectedMinistryIds(prev => {
+      const newMinistryIds = prev.includes(ministryId)
+        ? prev.filter(id => id !== ministryId)
+        : [...prev, ministryId];
+      return newMinistryIds;
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!activeOrgId) {
+      alert('Organização não selecionada. Por favor, selecione uma organização.');
+      return;
+    }
+    
+    const memberId = existingMember?.id || crypto.randomUUID();
+    
     const member: Member = {
-      id: existingMember?.id || crypto.randomUUID(),
+      id: memberId,
       name: formData.name,
       email: formData.email || undefined,
       phone: formData.phone || undefined,
@@ -67,9 +104,9 @@ export default function MemberForm() {
       membershipDate: formData.membershipDate,
       baptismDate: formData.baptismDate || undefined,
       status: formData.status,
-      ministries: formData.ministries,
+      ministries: selectedMinistryIds, // Usar os IDs selecionados
       notes: formData.notes || undefined,
-      profilePictureUrl: existingMember?.profilePictureUrl || 'https://i.pravatar.cc/150?u=' + (existingMember?.id || crypto.randomUUID()),
+      profilePictureUrl: existingMember?.profilePictureUrl || 'https://i.pravatar.cc/150?u=' + memberId,
       address: formData.street ? {
         street: formData.street,
         number: formData.number,
@@ -83,13 +120,22 @@ export default function MemberForm() {
       updatedAt: new Date().toISOString().split('T')[0],
     };
 
-    if (isEdit) {
-      dispatch({ type: 'UPDATE_MEMBER', payload: member });
-    } else {
-      dispatch({ type: 'ADD_MEMBER', payload: member });
-    }
+    try {
+      // Atualizar o store local
+      if (isEdit) {
+        dispatch({ type: 'UPDATE_MEMBER', payload: member });
+      } else {
+        dispatch({ type: 'ADD_MEMBER', payload: member });
+      }
 
-    navigate('/app/members');
+      // Persistir vínculos no Supabase
+      await setMemberMinistries(memberId, activeOrgId, selectedMinistryIds);
+
+      navigate('/app/members');
+    } catch (error) {
+      console.error('Erro ao salvar vínculos de ministérios:', error);
+      alert('Erro ao salvar os ministérios do membro. Tente novamente.');
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,19 +240,40 @@ export default function MemberForm() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Ministérios</label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 border border-gray-300 rounded-md">
-                  {availableMinistries.map(ministry => (
-                    <label key={ministry} className="flex items-center space-x-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.ministries.includes(ministry)}
-                        onChange={() => handleMinistryChange(ministry)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-gray-700">{ministry}</span>
-                    </label>
-                  ))}
-                </div>
+                {ministriesLoading || loadingExistingMinistries ? (
+                  <div className="flex items-center justify-center p-4 border border-gray-300 rounded-md">
+                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                    <span className="text-sm text-gray-600">
+                      {ministriesLoading ? 'Carregando ministérios...' : 'Carregando vínculos existentes...'}
+                    </span>
+                  </div>
+                ) : ministriesError ? (
+                  <div className="p-4 border border-red-300 rounded-md bg-red-50">
+                    <p className="text-sm text-red-600">
+                      {ministriesError}
+                    </p>
+                  </div>
+                ) : ministries.length === 0 ? (
+                  <div className="p-4 border border-gray-300 rounded-md bg-gray-50">
+                    <p className="text-sm text-gray-600">
+                      Nenhum ministério ativo encontrado para esta organização.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4 border border-gray-300 rounded-md">
+                    {ministries.map(ministry => (
+                      <label key={ministry.id} className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedMinistryIds.includes(ministry.id)}
+                          onChange={() => handleMinistryChange(ministry.id)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">{ministry.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Status *</label>
@@ -255,8 +322,16 @@ export default function MemberForm() {
             <button type="button" onClick={() => navigate('/app/members')} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
               Cancelar
             </button>
-            <button type="submit" className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <Save className="w-4 h-4 mr-2" />
+            <button 
+              type="submit" 
+              disabled={ministriesLoading || loadingExistingMinistries}
+              className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {ministriesLoading || loadingExistingMinistries ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
               {isEdit ? 'Atualizar' : 'Salvar'}
             </button>
           </div>

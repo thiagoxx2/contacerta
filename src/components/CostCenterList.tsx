@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp, useConfirm } from '../context/AppContext';
+import { useOrg } from '../context/OrgContext';
 import { CostCenter } from '../types';
+import { deleteCostCenter } from '../services/costCenterService';
 import { 
   Edit, 
   Trash2, 
@@ -26,6 +28,7 @@ const formatCurrency = (value: number) => {
 export default function CostCenterList() {
   usePageTitle('Centros de Custo | ContaCerta');
   const { state, dispatch } = useApp();
+  const { activeOrgId } = useOrg();
   const confirm = useConfirm();
   const { costCenters = [], documents = [] } = state;
   
@@ -54,8 +57,19 @@ export default function CostCenterList() {
     confirm({
       title: 'Excluir Centro de Custo?',
       message: 'Tem certeza que deseja excluir este centro de custo? Todos os lançamentos associados perderão o vínculo, mas não serão excluídos.',
-      onConfirm: () => {
-        dispatch({ type: 'DELETE_COST_CENTER', payload: id });
+      onConfirm: async () => {
+        if (!activeOrgId) {
+          console.error('Organização não encontrada');
+          return;
+        }
+
+        try {
+          await deleteCostCenter(id, activeOrgId);
+          dispatch({ type: 'DELETE_COST_CENTER', payload: id });
+        } catch (error) {
+          console.error('Erro ao excluir centro de custo:', error);
+          // Aqui você pode adicionar um toast de erro se tiver um sistema de notificações
+        }
       }
     });
   };
@@ -130,7 +144,6 @@ export default function CostCenterList() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saldo (Realizado)</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
               </tr>
             </thead>
@@ -158,17 +171,6 @@ export default function CostCenterList() {
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {formatCurrency(balance)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {cc.status === 'active' ? (
-                        <span className="inline-flex items-center text-green-600">
-                          <CheckCircle className="w-4 h-4 mr-1" /> Ativo
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center text-gray-500">
-                          <XCircle className="w-4 h-4 mr-1" /> Inativo
-                        </span>
-                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">

@@ -27,6 +27,12 @@ enum DocType {
   RECEIVABLE // A Receber
 }
 
+enum CostCenterType {
+  MINISTRY
+  EVENT
+  GROUP
+}
+
 enum DocStatus {
   OPEN
   PAID
@@ -211,16 +217,25 @@ model Supplier {
 }
 
 model CostCenter {
-  id        String   @id @default(uuid()) @db.Uuid
-  orgId     String   @db.Uuid
-  name      String
-  kind      String? // opcional (operacional, projeto, etc.)
+  id    String @id @default(uuid()) @db.Uuid
+  orgId String @db.Uuid
+
+  type CostCenterType @default(GROUP)
+
+  // Nome livre para não-ministry; quando MINISTRY será sincronizado com Ministry.name (via lógica/trigger)
+  name String
+
+  // Relação 1:1 (opcional) — UNIQUE garante um CC por Ministry
+  ministryId String?   @unique(map: "uq_cost_centers_ministryId") @db.Uuid
+  ministry   Ministry? @relation(fields: [ministryId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   documents Document[]
 
+  // Unicidade de nome por org para não duplicar nomes de CC
   @@unique([orgId, name])
   @@index([orgId])
   @@map("cost_centers")
@@ -235,7 +250,7 @@ model Category {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org       Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   documents Document[] // quando scope=FINANCE
   assets    Asset[] // quando scope=ASSET
 
@@ -427,6 +442,9 @@ model Ministry {
 
   org     Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
   members MemberMinistry[]
+
+  // NEW: back-relation 1:1 com CostCenter
+  costCenter CostCenter?
 
   @@unique([orgId, name])
   @@index([orgId, active])

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { Member, Supplier, Document, CostCenter, Asset } from '../types';
+import { Member, Supplier, Document, CostCenter, Asset, Category } from '../types';
 
 interface ModalState {
   isOpen: boolean;
@@ -14,6 +14,7 @@ interface AppState {
   documents: Document[];
   costCenters: CostCenter[];
   assets: Asset[];
+  categories: Category[];
   isLoading: boolean;
   modal: ModalState;
 }
@@ -39,6 +40,10 @@ type AppAction =
   | { type: 'ADD_ASSET'; payload: Asset }
   | { type: 'UPDATE_ASSET'; payload: Asset }
   | { type: 'DELETE_ASSET'; payload: string }
+  | { type: 'SET_CATEGORIES'; payload: Category[] }
+  | { type: 'ADD_CATEGORY'; payload: Category }
+  | { type: 'UPDATE_CATEGORY'; payload: Category }
+  | { type: 'DELETE_CATEGORY'; payload: string }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SHOW_MODAL'; payload: { title: string; message: string; onConfirm: () => void; } }
   | { type: 'HIDE_MODAL' };
@@ -49,6 +54,7 @@ const initialState: AppState = {
   documents: [],
   costCenters: [],
   assets: [],
+  categories: [],
   isLoading: false,
   modal: {
     isOpen: false,
@@ -148,6 +154,23 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         assets: state.assets.filter(asset => asset.id !== action.payload),
+      };
+
+    case 'SET_CATEGORIES':
+      return { ...state, categories: action.payload };
+    case 'ADD_CATEGORY':
+      return { ...state, categories: [...state.categories, action.payload] };
+    case 'UPDATE_CATEGORY':
+      return {
+        ...state,
+        categories: state.categories.map(category =>
+          category.id === action.payload.id ? action.payload : category
+        ),
+      };
+    case 'DELETE_CATEGORY':
+      return {
+        ...state,
+        categories: state.categories.filter(category => category.id !== action.payload),
       };
 
     case 'SET_LOADING':

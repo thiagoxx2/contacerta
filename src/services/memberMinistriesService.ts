@@ -1,73 +1,127 @@
 import { supabase } from '../lib/supabaseClient';
 
-export const listMinistriesByMember = async (
-  orgId: string,
-  memberId: string
+/**
+ * Lista os IDs dos ministérios vinculados a um membro específico
+ */
+export const listMinistryIdsByMember = async (
+  memberId: string, 
+  orgId: string
 ): Promise<string[]> => {
-  if (!orgId || !memberId) return [];
+  if (!memberId || !orgId) {
+    console.error('Member ID and Organization ID are required.');
+    return [];
+  }
 
   const { data, error } = await supabase
     .from('member_ministries')
     .select('ministryId')
-    .eq('orgId', orgId)
-    .eq('memberId', memberId);
+    .eq('memberId', memberId)
+    .eq('orgId', orgId);
 
   if (error) {
     console.error('Error fetching member ministries:', error);
-    return [];
+    throw new Error(`Failed to fetch member ministries: ${error.message}`);
   }
 
-  return data.map((row) => row.ministryId);
+  return data?.map(item => item.ministryId) || [];
 };
 
-export const replaceMemberMinistries = async (
-  orgId: string,
+/**
+ * Define os vínculos entre um membro e seus ministérios usando estratégia "replace set"
+ * Remove todos os vínculos existentes e insere os novos
+ */
+export const setMemberMinistries = async (
   memberId: string,
-  newMinistryIds: string[]
+  orgId: string,
+  ministryIds: string[]
 ): Promise<void> => {
-  if (!orgId || !memberId) return;
-
-  const { data: currentMinistries, error: fetchError } = await supabase
-    .from('member_ministries')
-    .select('ministryId')
-    .eq('orgId', orgId)
-    .eq('memberId', memberId);
-
-  if (fetchError) {
-    console.error('Error fetching current member ministries:', fetchError);
-    throw new Error('Failed to update ministries.');
+  if (!memberId || !orgId) {
+    throw new Error('Member ID and Organization ID are required.');
   }
 
-  const currentMinistryIds = currentMinistries.map((m) => m.ministryId);
-
-  const toInsert = newMinistryIds
-    .filter((id) => !currentMinistryIds.includes(id))
-    .map((ministryId) => ({ orgId, memberId, ministryId }));
-
-  const toDelete = currentMinistryIds.filter(
-    (id) => !newMinistryIds.includes(id)
-  );
-
-  if (toInsert.length > 0) {
-    const { error: insertError } = await supabase
-      .from('member_ministries')
-      .insert(toInsert);
-    if (insertError) {
-      console.error('Error inserting new member ministries:', insertError);
-      throw new Error('Failed to add new ministries.');
-    }
-  }
-
-  if (toDelete.length > 0) {
+  try {
+    // 1. Remover todos os vínculos existentes para este membro nesta organização
     const { error: deleteError } = await supabase
       .from('member_ministries')
       .delete()
       .eq('memberId', memberId)
-      .eq('orgId', orgId)
-      .in('ministryId', toDelete);
+      .eq('orgId', orgId);
+
     if (deleteError) {
-      console.error('Error deleting old member ministries:', deleteError);
-      throw new Error('Failed to remove old ministries.');
+      console.error('Error deleting existing member ministries:', deleteError);
+      throw new Error(`Failed to delete existing member ministries: ${deleteError.message}`);
     }
+
+    // 2. Se há ministérios para inserir, fazer inserção em massa
+    if (ministryIds.length > 0) {
+      const insertData = ministryIds.map(ministryId => ({
+        orgId,
+        memberId,
+        ministryId,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('member_ministries')
+        .insert(insertData);
+
+      if (insertError) {
+        console.error('Error inserting member ministries:', insertError);
+        throw new Error(`Failed to insert member ministries: ${insertError.message}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error in setMemberMinistries:', error);
+    throw error;
+  }
+};
+
+/**
+ * Adiciona um vínculo específico entre membro e ministério
+ */
+export const addMemberMinistry = async (
+  memberId: string,
+  orgId: string,
+  ministryId: string
+): Promise<void> => {
+  if (!memberId || !orgId || !ministryId) {
+    throw new Error('Member ID, Organization ID and Ministry ID are required.');
+  }
+
+  const { error } = await supabase
+    .from('member_ministries')
+    .insert({
+      orgId,
+      memberId,
+      ministryId,
+    });
+
+  if (error) {
+    console.error('Error adding member ministry:', error);
+    throw new Error(`Failed to add member ministry: ${error.message}`);
+  }
+};
+
+/**
+ * Remove um vínculo específico entre membro e ministério
+ */
+export const removeMemberMinistry = async (
+  memberId: string,
+  orgId: string,
+  ministryId: string
+): Promise<void> => {
+  if (!memberId || !orgId || !ministryId) {
+    throw new Error('Member ID, Organization ID and Ministry ID are required.');
+  }
+
+  const { error } = await supabase
+    .from('member_ministries')
+    .delete()
+    .eq('memberId', memberId)
+    .eq('orgId', orgId)
+    .eq('ministryId', ministryId);
+
+  if (error) {
+    console.error('Error removing member ministry:', error);
+    throw new Error(`Failed to remove member ministry: ${error.message}`);
   }
 };
