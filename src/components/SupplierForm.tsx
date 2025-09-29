@@ -1,10 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { Supplier } from '../types';
-import { Save, Building, User } from 'lucide-react';
+import { useOrg } from '../context/OrgContext';
+import { Save, Building, User, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { 
+  createSupplier, 
+  updateSupplier, 
+  digitsOnly, 
+  validateCPF, 
+  validateCNPJ,
+  CreateSupplierInput,
+  UpdateSupplierInput 
+} from '../services/supplierService';
 
 export default function SupplierForm() {
   const navigate = useNavigate();
@@ -14,51 +23,138 @@ export default function SupplierForm() {
   usePageTitle(isEdit ? 'Editar Fornecedor | ContaCerta' : 'Novo Fornecedor | ContaCerta');
   
   const { state, dispatch } = useApp();
+  const { activeOrgId } = useOrg();
   const { suppliers = [] } = state;
 
   const existingSupplier = isEdit ? suppliers.find(s => s.id === id) : undefined;
 
+  // Estados para controle de loading e erros
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
-    name: existingSupplier?.name || '',
-    cnpj: existingSupplier?.cnpj || '',
-    cpf: existingSupplier?.cpf || '',
-    email: existingSupplier?.email || '',
-    phone: existingSupplier?.phone || '',
-    category: existingSupplier?.category || '',
-    status: existingSupplier?.status || 'active' as 'active' | 'inactive',
-    notes: existingSupplier?.notes || '',
+    name: '',
+    cnpj: '',
+    cpf: '',
+    email: '',
+    phone: '',
+    category: '',
+    status: 'active' as 'active' | 'inactive',
+    notes: '',
     
     // Address
-    street: existingSupplier?.address?.street || '',
-    number: existingSupplier?.address?.number || '',
-    complement: existingSupplier?.address?.complement || '',
-    neighborhood: existingSupplier?.address?.neighborhood || '',
-    city: existingSupplier?.address?.city || '',
-    state: existingSupplier?.address?.state || '',
-    zipCode: existingSupplier?.address?.zipCode || '',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+    zipCode: '',
     
     // Bank Info
-    bank: existingSupplier?.bankInfo?.bank || '',
-    agency: existingSupplier?.bankInfo?.agency || '',
-    account: existingSupplier?.bankInfo?.account || '',
-    accountType: existingSupplier?.bankInfo?.accountType || 'corrente' as 'corrente' | 'poupanca',
+    bank: '',
+    agency: '',
+    account: '',
+    accountType: 'corrente' as 'corrente' | 'poupanca',
   });
 
   const [personType, setPersonType] = useState<'fisica' | 'juridica'>(
-    existingSupplier?.cnpj ? 'juridica' : 'fisica'
+    existingSupplier?.type === 'PJ' ? 'juridica' : 'fisica'
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Carregar dados do fornecedor existente
+  useEffect(() => {
+    if (isEdit && existingSupplier) {
+      // Determinar tipo de pessoa baseado no type do banco
+      const personTypeFromDB = existingSupplier.type === 'PJ' ? 'juridica' : 'fisica';
+      setPersonType(personTypeFromDB);
+
+      // Parsear address e bankInfo se existirem
+      let addressData = {};
+      let bankData = {};
+
+      try {
+        if (existingSupplier.address) {
+          addressData = JSON.parse(existingSupplier.address);
+        }
+      } catch (e) {
+        console.warn('Erro ao parsear address:', e);
+      }
+
+      try {
+        if (existingSupplier.bankInfo) {
+          bankData = JSON.parse(existingSupplier.bankInfo);
+        }
+      } catch (e) {
+        console.warn('Erro ao parsear bankInfo:', e);
+      }
+
+      // Atualizar formData com dados do banco
+      setFormData({
+        name: existingSupplier.name || '',
+        cnpj: personTypeFromDB === 'juridica' ? (existingSupplier.taxId || '') : '',
+        cpf: personTypeFromDB === 'fisica' ? (existingSupplier.taxId || '') : '',
+        email: existingSupplier.email || '',
+        phone: existingSupplier.phone || '',
+        category: existingSupplier.category || '',
+        status: existingSupplier.status ? 'active' : 'inactive',
+        notes: '', // Campo notes não existe no banco
+        
+        // Address
+        street: (addressData as any).street || '',
+        number: (addressData as any).number || '',
+        complement: (addressData as any).complement || '',
+        neighborhood: (addressData as any).neighborhood || '',
+        city: (addressData as any).city || '',
+        state: (addressData as any).state || '',
+        zipCode: (addressData as any).zipCode || '',
+        
+        // Bank Info
+        bank: (bankData as any).bank || '',
+        agency: (bankData as any).agency || '',
+        account: (bankData as any).account || '',
+        accountType: (bankData as any).accountType || 'corrente',
+      });
+    }
+  }, [isEdit, existingSupplier]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const supplier: Supplier = {
-      id: existingSupplier?.id || crypto.randomUUID(),
-      name: formData.name,
-      cnpj: personType === 'juridica' ? formData.cnpj : undefined,
-      cpf: personType === 'fisica' ? formData.cpf : undefined,
-      email: formData.email || undefined,
-      phone: formData.phone || undefined,
-      address: formData.street ? {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      // Validações básicas
+      if (!activeOrgId) {
+        setError('Nenhuma organização ativa selecionada. Selecione uma organização para continuar.');
+        return;
+      }
+
+      if (!formData.name.trim()) {
+        setError('Nome é obrigatório.');
+        return;
+      }
+
+      // Validar CPF/CNPJ
+      const taxId = personType === 'juridica' ? formData.cnpj : formData.cpf;
+      const taxIdDigits = digitsOnly(taxId);
+      
+      if (personType === 'juridica' && !validateCNPJ(taxId)) {
+        setError('CNPJ deve ter 14 dígitos.');
+        return;
+      }
+      
+      if (personType === 'fisica' && !validateCPF(taxId)) {
+        setError('CPF deve ter 11 dígitos.');
+        return;
+      }
+
+      // Montar payload
+      const type = personType === 'fisica' ? 'PF' : 'PJ';
+      const status = formData.status === 'active';
+      
+      // Serializar address se preenchido
+      const address = formData.street.trim() ? JSON.stringify({
         street: formData.street,
         number: formData.number,
         complement: formData.complement || undefined,
@@ -66,27 +162,76 @@ export default function SupplierForm() {
         city: formData.city,
         state: formData.state,
         zipCode: formData.zipCode,
-      } : undefined,
-      bankInfo: formData.bank ? {
+      }) : null;
+
+      // Serializar bankInfo se preenchido
+      const bankInfo = formData.bank.trim() ? JSON.stringify({
         bank: formData.bank,
         agency: formData.agency,
         account: formData.account,
         accountType: formData.accountType,
-      } : undefined,
-      category: formData.category,
-      status: formData.status,
-      notes: formData.notes || undefined,
-      createdAt: existingSupplier?.createdAt || new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-    };
+      }) : null;
 
-    if (isEdit) {
-      dispatch({ type: 'UPDATE_SUPPLIER', payload: supplier });
-    } else {
-      dispatch({ type: 'ADD_SUPPLIER', payload: supplier });
+      if (isEdit) {
+        // Atualizar fornecedor
+        const updateData: UpdateSupplierInput = {
+          id: id!,
+          orgId: activeOrgId,
+          type,
+          name: formData.name,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
+          taxId: taxIdDigits,
+          category: formData.category || undefined,
+          status,
+          address,
+          bankInfo,
+        };
+
+        const { data, error } = await updateSupplier(updateData);
+        
+        if (error) {
+          setError(error.message);
+          return;
+        }
+
+        if (data) {
+          dispatch({ type: 'UPDATE_SUPPLIER', payload: data });
+        }
+      } else {
+        // Criar fornecedor
+        const createData: CreateSupplierInput = {
+          orgId: activeOrgId,
+          type,
+          name: formData.name,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
+          taxId: taxIdDigits,
+          category: formData.category || undefined,
+          status,
+          address,
+          bankInfo,
+        };
+
+        const { data, error } = await createSupplier(createData);
+        
+        if (error) {
+          setError(error.message);
+          return;
+        }
+
+        if (data) {
+          dispatch({ type: 'ADD_SUPPLIER', payload: data });
+        }
+      }
+
+      navigate('/app/suppliers');
+    } catch (err) {
+      setError('Erro inesperado. Tente novamente.');
+      console.error('Erro ao salvar fornecedor:', err);
+    } finally {
+      setIsLoading(false);
     }
-
-    navigate('/app/suppliers');
   };
 
   const formatCNPJ = (value: string) => {
@@ -137,6 +282,17 @@ export default function SupplierForm() {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-8">
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-4">
+              <div className="flex">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+                <div className="ml-3">
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Person Type */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -416,7 +572,7 @@ export default function SupplierForm() {
                 </label>
                 <select
                   value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="active">Ativo</option>
@@ -450,10 +606,11 @@ export default function SupplierForm() {
             </button>
             <button
               type="submit"
-              className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isLoading}
+              className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save className="w-4 h-4 mr-2" />
-              {isEdit ? 'Atualizar' : 'Salvar'}
+              {isLoading ? 'Salvando...' : (isEdit ? 'Atualizar' : 'Salvar')}
             </button>
           </div>
         </form>

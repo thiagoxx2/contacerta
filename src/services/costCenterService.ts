@@ -104,18 +104,12 @@ export const createCostCenter = async (input: CreateCostCenterInput): Promise<DB
   }
 
   try {
-    // Gerar ID no cliente para robustez
-    const id = crypto.randomUUID();
-    
-    // Preparar payload com apenas campos do BD
+    // Preparar payload com apenas campos do BD (id, createdAt, updatedAt são gerados automaticamente)
     const payload = {
-      id,
       orgId: input.orgId,
       type: input.type,
       name: input.name.trim(),
       ministryId: input.type === 'MINISTRY' ? input.ministryId : null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     };
 
     const { data, error } = await supabase
