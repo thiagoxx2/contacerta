@@ -15,6 +15,24 @@ import {
   UpdateSupplierInput 
 } from '../services/supplierService';
 
+// Lista de categorias sugeridas
+const COMMON_SUPPLIER_CATEGORIES = [
+  'Materiais de Escritório',
+  'Limpeza e Higiene',
+  'Manutenção Predial',
+  'Tecnologia / Software',
+  'Gráfica / Impressão',
+  'Alimentação / Coffee Break',
+  'Transporte / Combustível',
+  'Serviços Contábeis',
+  'Serviços Jurídicos',
+  'Marketing / Design',
+  'Eventos / Locação',
+  'Segurança / Monitoramento',
+  'Construção / Obras',
+  'Seguros',
+];
+
 export default function SupplierForm() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -268,6 +286,11 @@ export default function SupplierForm() {
       .slice(0, 9);
   };
 
+  // Adiciona a categoria existente dinamicamente, se necessário
+  const categories = existingSupplier?.category && !COMMON_SUPPLIER_CATEGORIES.includes(existingSupplier.category)
+    ? [existingSupplier.category, ...COMMON_SUPPLIER_CATEGORIES]
+    : COMMON_SUPPLIER_CATEGORIES;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -369,14 +392,21 @@ export default function SupplierForm() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Categoria *
                 </label>
-                <input
-                  type="text"
+                <select
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  placeholder="Ex: Material de Construção, Serviços"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
-                />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="" disabled>
+                    Selecione uma categoria
+                  </option>
+                  {categories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

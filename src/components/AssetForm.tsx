@@ -5,6 +5,14 @@ import { Asset } from '../types';
 import { Save, Archive } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePageTitle } from '../hooks/usePageTitle';
+import CurrencyInput from './CurrencyInput';
+import { formatAssetCode } from '../utils/asset';
+
+const COMMON_ASSET_CATEGORIES = [
+  'Mobiliário','Eletrônicos','Informática','Áudio e Vídeo','Instrumentos Musicais',
+  'Som e Iluminação','Eletrodomésticos','Escritório','Obras/Construção','Ferramentas',
+  'Veículos','Limpeza e Manutenção','Segurança','Uniformes e Têxteis','Utilidades Gerais'
+].sort();
 
 export default function AssetForm() {
   const navigate = useNavigate();
@@ -20,12 +28,11 @@ export default function AssetForm() {
 
   const [formData, setFormData] = useState({
     name: existingAsset?.name || '',
-    code: existingAsset?.code || '',
     description: existingAsset?.description || '',
     category: existingAsset?.category || '',
     location: existingAsset?.location || '',
     purchaseDate: existingAsset?.purchaseDate || new Date().toISOString().split('T')[0],
-    purchaseValue: existingAsset?.purchaseValue?.toString() || '',
+    purchaseValueCents: existingAsset?.purchaseValue ? Math.round(existingAsset.purchaseValue * 100) : null,
     supplierId: existingAsset?.supplierId || '',
     status: existingAsset?.status || 'in_use' as Asset['status'],
   });
@@ -36,12 +43,12 @@ export default function AssetForm() {
     const newAsset: Asset = {
       id: existingAsset?.id || crypto.randomUUID(),
       name: formData.name,
-      code: formData.code,
+      code: existingAsset?.code, // Preserva o code existente, não envia novo
       description: formData.description || undefined,
       category: formData.category,
       location: formData.location,
       purchaseDate: formData.purchaseDate,
-      purchaseValue: parseFloat(formData.purchaseValue),
+      purchaseValue: (formData.purchaseValueCents ?? 0) / 100,
       supplierId: formData.supplierId || undefined,
       status: formData.status,
       createdAt: existingAsset?.createdAt || new Date().toISOString().split('T')[0],
@@ -83,17 +90,14 @@ export default function AssetForm() {
                 required
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Código de Identificação *</label>
-              <input
-                type="text"
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ex: PAT-001"
-                required
-              />
-            </div>
+            {isEdit && existingAsset && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Número do Patrimônio</label>
+                <div className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md text-gray-700">
+                  {formatAssetCode(existingAsset)}
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
@@ -110,14 +114,20 @@ export default function AssetForm() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Categoria *</label>
-              <input
-                type="text"
+              <select
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ex: Mobiliário, Eletrônicos"
                 required
-              />
+              >
+                <option value="" disabled>Selecione uma categoria</option>
+                {COMMON_ASSET_CATEGORIES.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+                {isEdit && existingAsset?.category && !COMMON_ASSET_CATEGORIES.includes(existingAsset.category) && (
+                  <option value={existingAsset.category}>{existingAsset.category}</option>
+                )}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Localização *</label>
@@ -145,13 +155,11 @@ export default function AssetForm() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Valor da Compra (R$) *</label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.purchaseValue}
-                onChange={(e) => setFormData({ ...formData, purchaseValue: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <CurrencyInput
+                value={formData.purchaseValueCents}
+                onChange={(cents) => setFormData({ ...formData, purchaseValueCents: cents })}
                 required
+                placeholder="R$ 0,00"
               />
             </div>
           </div>

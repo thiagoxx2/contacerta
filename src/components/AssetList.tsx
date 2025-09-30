@@ -20,6 +20,7 @@ import { motion } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { formatAssetCode } from '../utils/asset';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
@@ -39,9 +40,10 @@ export default function AssetList() {
   const [filterCategory, setFilterCategory] = useState('');
 
   const filteredAssets = assets.filter(asset => {
+    const assetCode = formatAssetCode(asset);
     const matchesSearch = 
       asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      asset.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      assetCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (asset.description && asset.description.toLowerCase().includes(searchTerm.toLowerCase()));
     
@@ -156,7 +158,7 @@ export default function AssetList() {
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <h3 className="text-lg font-medium text-gray-900 truncate">{asset.name}</h3>
-                    <p className="text-sm text-gray-500">{asset.code}</p>
+                    <p className="text-sm text-gray-500">{formatAssetCode(asset)}</p>
                   </div>
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
                     <statusInfo.icon className="w-3 h-3 mr-1" />

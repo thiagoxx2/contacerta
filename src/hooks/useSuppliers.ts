@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listSuppliersByOrg } from '../services/supplierService';
-import type { Supplier } from '../services/supplierService';
+import type { Supplier } from '../types';
 
 interface UseSuppliersOptions {
   orgId: string;
@@ -18,12 +18,12 @@ interface UseSuppliersResult {
 }
 
 /**
- * Hook para gerenciar fornecedores com busca e debounce
+ * Hook para gerenciar fornecedores com busca (com debounce) a partir do Supabase.
  */
-export function useSuppliers({ 
-  orgId, 
-  onlyActive = true, 
-  limit = 20 
+export function useSuppliers({
+  orgId,
+  onlyActive = true,
+  limit = 20,
 }: UseSuppliersOptions): UseSuppliersResult {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,15 +34,17 @@ export function useSuppliers({
   // Debounce da busca
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 250);
-
+      setDebouncedSearch(search.trim());
+    }, 300);
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Função para buscar fornecedores
   const fetchSuppliers = useCallback(async () => {
-    if (!orgId) return;
+    if (!orgId) {
+      setSuppliers([]);
+      setError(undefined);
+      return;
+    }
 
     setLoading(true);
     setError(undefined);
@@ -50,16 +52,15 @@ export function useSuppliers({
     try {
       const result = await listSuppliersByOrg(orgId, {
         q: debouncedSearch || undefined,
-        onlyActive,
-        limit
+        status: onlyActive ? 'active' : 'all',
+        limit,
       });
 
       if (result.error) {
-        setError(result.error);
+        setError(result.error.message);
         setSuppliers([]);
       } else {
-        setSuppliers(result.suppliers);
-        setError(undefined);
+        setSuppliers(result.data ?? []);
       }
     } catch (err) {
       console.error('Erro ao buscar fornecedores:', err);
@@ -75,7 +76,6 @@ export function useSuppliers({
     fetchSuppliers();
   }, [fetchSuppliers]);
 
-  // Função para refetch manual
   const refetch = useCallback(async () => {
     await fetchSuppliers();
   }, [fetchSuppliers]);
@@ -86,6 +86,8 @@ export function useSuppliers({
     error,
     search,
     setSearch,
-    refetch
+    refetch,
   };
 }
+
+export default useSuppliers;

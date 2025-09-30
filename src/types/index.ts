@@ -1,7 +1,7 @@
 export interface Asset {
   id: string;
   name: string;
-  code: string;
+  code?: string | null;
   description?: string;
   purchaseDate: string;
   purchaseValue: number;

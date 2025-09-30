@@ -153,9 +153,9 @@ export default function DocumentForm() {
             
             {formData.type === 'payable' ? (
               <SupplierCombobox
-                value={formData.supplierId}
-                onChange={(supplierId) => setFormData({ ...formData, supplierId })}
-                orgId={activeOrgId || ''}
+                value={formData.supplierId ?? undefined}
+                onChange={(supplierId) => setFormData({ ...formData, supplierId: supplierId ?? null })}
+                orgId={activeOrgId}
                 placeholder="Selecione (Opcional)"
               />
             ) : (
