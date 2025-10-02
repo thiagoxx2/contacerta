@@ -3,13 +3,13 @@ export interface Asset {
   name: string;
   code?: string | null;
   description?: string;
-  purchaseDate: string;
-  purchaseValue: number;
-  currentValue?: number;
-  status: 'in_use' | 'in_storage' | 'in_maintenance' | 'disposed';
-  location: string;
   category: string;
+  location: string;
   supplierId?: string;
+  status: 'in_use' | 'in_storage' | 'in_maintenance' | 'disposed';
+  acquisitionAt?: string;
+  acquisitionVal?: number | null;
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }

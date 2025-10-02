@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useApp, useConfirm } from '../context/AppContext';
-import { Asset } from '../types';
+import { useOrg } from '../context/OrgContext';
+import { useAssets } from '../hooks/useAssets';
 import { 
   Edit, 
   Trash2, 
@@ -18,7 +17,6 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { formatAssetCode } from '../utils/asset';
 
@@ -31,52 +29,47 @@ const formatCurrency = (value: number) => {
 
 export default function AssetList() {
   usePageTitle('Patrimônio | ContaCerta');
-  const { state, dispatch } = useApp();
-  const confirm = useConfirm();
-  const { assets = [] } = state;
+  const { activeOrgId } = useOrg();
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | Asset['status']>('all');
-  const [filterCategory, setFilterCategory] = useState('');
+  const {
+    assets,
+    loading,
+    error,
+    search,
+    setSearch,
+    filterStatus,
+    setFilterStatus,
+    filterCategoryId,
+    setFilterCategoryId,
+    categories,
+  } = useAssets({ orgId: activeOrgId || '' });
 
+  // Filtrar por categoria no cliente (por nome)
   const filteredAssets = assets.filter(asset => {
-    const assetCode = formatAssetCode(asset);
-    const matchesSearch = 
-      asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      assetCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      asset.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (asset.description && asset.description.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesStatus = filterStatus === 'all' || asset.status === filterStatus;
-    const matchesCategory = !filterCategory || asset.category.toLowerCase().includes(filterCategory.toLowerCase());
-    
-    return matchesSearch && matchesStatus && matchesCategory;
+    const matchesCategory = !filterCategoryId || asset.category === filterCategoryId;
+    return matchesCategory;
   });
 
-  const handleDelete = (id: string) => {
-    confirm({
-      title: 'Confirmar Exclusão',
-      message: 'Tem certeza que deseja excluir este item do patrimônio? Esta ação é irreversível.',
-      onConfirm: () => {
-        dispatch({ type: 'DELETE_ASSET', payload: id });
-      }
-    });
+  const handleDelete = () => {
+    // Por enquanto, apenas exibir um alerta
+    alert('Funcionalidade de exclusão será implementada em breve');
   };
 
-  const getStatusInfo = (status: Asset['status']) => {
+  const getStatusInfo = (status: string) => {
     switch (status) {
-      case 'in_use':
+      case 'IN_USE':
         return { icon: CheckCircle, text: 'Em Uso', color: 'text-green-800 bg-green-100' };
-      case 'in_storage':
+      case 'IN_STORAGE':
         return { icon: Package, text: 'Em Estoque', color: 'text-blue-800 bg-blue-100' };
-      case 'in_maintenance':
+      case 'IN_MAINTENANCE':
         return { icon: Wrench, text: 'Manutenção', color: 'text-yellow-800 bg-yellow-100' };
-      case 'disposed':
+      case 'DISPOSED':
         return { icon: XCircle, text: 'Baixado', color: 'text-gray-800 bg-gray-100' };
+      default:
+        return { icon: CheckCircle, text: 'Em Uso', color: 'text-green-800 bg-green-100' };
     }
   };
 
-  const categories = [...new Set(assets.map(a => a.category))];
 
   return (
     <div className="space-y-6">
@@ -105,8 +98,8 @@ export default function AssetList() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar por nome, código, local..."
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -116,7 +109,7 @@ export default function AssetList() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as any)}
+              onChange={(e) => setFilterStatus(e.target.value as 'all' | 'in_use' | 'in_storage' | 'in_maintenance' | 'disposed')}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">Todos</option>
@@ -129,8 +122,8 @@ export default function AssetList() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
             <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
+              value={filterCategoryId}
+              onChange={(e) => setFilterCategoryId(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Todas</option>
@@ -142,10 +135,37 @@ export default function AssetList() {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Carregando ativos...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex">
+            <XCircle className="w-5 h-5 text-red-400 mr-2" />
+            <div>
+              <h3 className="text-sm font-medium text-red-800">Erro ao carregar ativos</h3>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Asset Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {!loading && !error && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredAssets.map((asset, index) => {
           const statusInfo = getStatusInfo(asset.status);
+          const formattedAcqDate = asset.acquisitionAt
+            ? format(parseISO(asset.acquisitionAt), 'dd/MM/yyyy')
+            : '—';
           return (
             <motion.div
               key={asset.id}
@@ -169,7 +189,7 @@ export default function AssetList() {
                 <div className="space-y-2 mb-4 text-sm text-gray-600">
                   <div className="flex items-center">
                     <Tag className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
-                    <span>{asset.category}</span>
+                    <span>{asset.category || 'Sem categoria'}</span>
                   </div>
                   <div className="flex items-center">
                     <MapPin className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
@@ -177,11 +197,11 @@ export default function AssetList() {
                   </div>
                   <div className="flex items-center">
                     <DollarSign className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
-                    <span>{formatCurrency(asset.purchaseValue)}</span>
+                    <span>{formatCurrency(Number(asset.acquisitionVal ?? 0))}</span>
                   </div>
                    <div className="flex items-center">
                     <Calendar className="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
-                    <span>Comprado em {format(parseISO(asset.purchaseDate), "dd/MM/yyyy")}</span>
+                    <span>Comprado em {formattedAcqDate}</span>
                   </div>
                 </div>
               </div>
@@ -196,7 +216,7 @@ export default function AssetList() {
                     <Edit className="w-4 h-4" />
                   </Link>
                   <button
-                    onClick={() => handleDelete(asset.id)}
+                    onClick={handleDelete}
                     className="text-red-600 hover:text-red-800 p-1"
                     title="Excluir"
                   >
@@ -207,15 +227,32 @@ export default function AssetList() {
             </motion.div>
           )
         })}
-      </div>
-
-      {filteredAssets.length === 0 && (
-        <div className="text-center py-12 col-span-full">
-          <Archive className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-sm font-medium text-gray-900 mb-1">Nenhum item encontrado</h3>
-          <p className="text-sm text-gray-500">Tente ajustar os filtros ou adicione um novo item ao patrimônio.</p>
         </div>
       )}
+
+      {/* Empty State */}
+      {!loading && !error && filteredAssets.length === 0 && (
+        <div className="text-center py-12">
+          <Archive className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum ativo encontrado</h3>
+          <p className="text-gray-600 mb-4">
+            {assets.length === 0 
+              ? 'Comece adicionando seu primeiro item ao patrimônio.'
+              : 'Tente ajustar os filtros para encontrar o que procura.'
+            }
+          </p>
+          {assets.length === 0 && (
+            <Link
+              to="/app/assets/new"
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+            >
+              <Archive className="w-4 h-4 mr-2" />
+              Adicionar Primeiro Item
+            </Link>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }

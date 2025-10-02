@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 import { useSuppliers } from '../hooks/useSuppliers';
 
@@ -27,6 +27,7 @@ export default function SupplierCombobox({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState<{ id: string; name: string } | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   const { suppliers = [], loading, error, setSearch, refetch } = useSuppliers({
     orgId: orgId || '',
@@ -36,6 +37,7 @@ export default function SupplierCombobox({
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   // Atualizar busca (debounced no hook) quando o termo muda
   useEffect(() => {
@@ -64,28 +66,79 @@ export default function SupplierCombobox({
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
         setSearchTerm('');
+        setHighlightedIndex(-1);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Manipulação de teclado para acessibilidade
+  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (!isOpen) {
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        setIsOpen(true);
+        inputRef.current?.focus();
+        return;
+      }
+      return;
+    }
+
+    const filtered = getFilteredSuppliers();
+    
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        setHighlightedIndex(prev => 
+          prev < filtered.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        setHighlightedIndex(prev => 
+          prev > 0 ? prev - 1 : filtered.length - 1
+        );
+        break;
+      case 'Enter':
+        event.preventDefault();
+        if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
+          handleSelect(filtered[highlightedIndex]);
+        }
+        break;
+      case 'Escape':
+        event.preventDefault();
+        setIsOpen(false);
+        setSearchTerm('');
+        setHighlightedIndex(-1);
+        inputRef.current?.blur();
+        break;
+    }
+  }, [isOpen, highlightedIndex]);
+
+  // Função para obter fornecedores filtrados
+  const getFilteredSuppliers = useCallback(() => {
+    const list = Array.isArray(suppliers) ? suppliers : [];
+    const term = (searchTerm || '').toLowerCase();
+    return list.filter((s) => (s?.name || '').toLowerCase().includes(term));
+  }, [suppliers, searchTerm]);
+
   const handleSelect = (supplier: { id: string; name: string }) => {
     setSelectedSupplier(supplier);
     onChange?.(supplier.id);
     setIsOpen(false);
     setSearchTerm('');
+    setHighlightedIndex(-1);
   };
 
   const handleClear = () => {
     setSelectedSupplier(null);
     onChange?.(undefined);
     setSearchTerm('');
+    setHighlightedIndex(-1);
   };
 
-  const list = Array.isArray(suppliers) ? suppliers : [];
-  const term = (searchTerm || '').toLowerCase();
-  const filtered = list.filter((s) => (s?.name || '').toLowerCase().includes(term));
+  const filtered = getFilteredSuppliers();
 
   // Se não houver orgId, evita fetch e mostra placeholder desabilitado
   if (!orgId) {
@@ -109,12 +162,18 @@ export default function SupplierCombobox({
           onChange={(e) => {
             setSearchTerm(e.target.value);
             if (!isOpen) setIsOpen(true);
+            setHighlightedIndex(-1);
           }}
           onFocus={() => setIsOpen(true)}
+          onKeyDown={handleKeyDown}
           placeholder={selectedSupplier ? selectedSupplier.name : placeholder}
           disabled={disabled}
           className="w-full px-3 py-2 pr-20 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
           required={required}
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          aria-autocomplete="list"
         />
 
         <div className="absolute inset-y-0 right-0 flex items-center">
@@ -148,7 +207,12 @@ export default function SupplierCombobox({
       </div>
 
       {isOpen && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+        <div 
+          ref={listRef}
+          className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+          role="listbox"
+          aria-label="Lista de fornecedores"
+        >
           {loading && (
             <div className="px-3 py-2 text-sm text-gray-500">Carregando fornecedores...</div>
           )}
@@ -159,18 +223,22 @@ export default function SupplierCombobox({
 
           {!loading && !error && filtered.length === 0 && (
             <div className="px-3 py-2 text-sm text-gray-500">
-              {term ? 'Nenhum fornecedor encontrado' : 'Nenhum fornecedor disponível'}
+              {searchTerm ? 'Nenhum fornecedor encontrado' : 'Nenhum fornecedor disponível'}
             </div>
           )}
 
           {!loading &&
             !error &&
-            filtered.map((supplier) => (
+            filtered.map((supplier, index) => (
               <button
                 key={supplier.id}
                 type="button"
                 onClick={() => handleSelect({ id: supplier.id, name: supplier.name })}
-                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100 focus:outline-none ${
+                  index === highlightedIndex ? 'bg-blue-100 text-blue-900' : ''
+                }`}
+                role="option"
+                aria-selected={index === highlightedIndex}
               >
                 {supplier.name}
               </button>

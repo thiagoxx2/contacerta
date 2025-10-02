@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useOrg } from '../context/OrgContext';
 import { Asset } from '../types';
 import { Save, Archive } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePageTitle } from '../hooks/usePageTitle';
 import CurrencyInput from './CurrencyInput';
+import SupplierCombobox from './SupplierCombobox';
 import { formatAssetCode } from '../utils/asset';
+import { createAsset, updateAsset } from '../services/assetService';
 
 const COMMON_ASSET_CATEGORIES = [
-  'Mobiliário','Eletrônicos','Informática','Áudio e Vídeo','Instrumentos Musicais',
-  'Som e Iluminação','Eletrodomésticos','Escritório','Obras/Construção','Ferramentas',
-  'Veículos','Limpeza e Manutenção','Segurança','Uniformes e Têxteis','Utilidades Gerais'
+  'Mobiliário', 'Eletrônicos', 'Informática', 'Áudio e Vídeo', 'Instrumentos Musicais',
+  'Som e Iluminação', 'Eletrodomésticos', 'Escritório', 'Obras/Construção', 'Ferramentas',
+  'Veículos', 'Limpeza e Manutenção', 'Segurança', 'Uniformes e Têxteis', 'Utilidades Gerais'
 ].sort();
+
 
 export default function AssetForm() {
   const navigate = useNavigate();
@@ -20,9 +24,10 @@ export default function AssetForm() {
   const isEdit = !!id;
 
   usePageTitle(isEdit ? 'Editar Item do Patrimônio' : 'Novo Item do Patrimônio');
-  
-  const { state, dispatch } = useApp();
-  const { assets = [], suppliers = [] } = state;
+
+  const { state } = useApp();
+  const { assets = [] } = state;
+  const { activeOrgId } = useOrg();
 
   const existingAsset = isEdit ? assets.find(a => a.id === id) : undefined;
 
@@ -31,37 +36,72 @@ export default function AssetForm() {
     description: existingAsset?.description || '',
     category: existingAsset?.category || '',
     location: existingAsset?.location || '',
-    purchaseDate: existingAsset?.purchaseDate || new Date().toISOString().split('T')[0],
-    purchaseValueCents: existingAsset?.purchaseValue ? Math.round(existingAsset.purchaseValue * 100) : null,
+    purchaseDate: existingAsset?.acquisitionAt?.slice(0, 10) || new Date().toISOString().split('T')[0],
+    purchaseValueCents: existingAsset?.acquisitionVal ? Math.round(Number(existingAsset.acquisitionVal) * 100) : null,
     supplierId: existingAsset?.supplierId || '',
     status: existingAsset?.status || 'in_use' as Asset['status'],
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    const newAsset: Asset = {
-      id: existingAsset?.id || crypto.randomUUID(),
-      name: formData.name,
-      code: existingAsset?.code, // Preserva o code existente, não envia novo
-      description: formData.description || undefined,
-      category: formData.category,
-      location: formData.location,
-      purchaseDate: formData.purchaseDate,
-      purchaseValue: (formData.purchaseValueCents ?? 0) / 100,
-      supplierId: formData.supplierId || undefined,
-      status: formData.status,
-      createdAt: existingAsset?.createdAt || new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-    };
 
-    if (isEdit) {
-      dispatch({ type: 'UPDATE_ASSET', payload: newAsset });
-    } else {
-      dispatch({ type: 'ADD_ASSET', payload: newAsset });
+    // Validar activeOrgId
+    if (!activeOrgId) {
+      alert('Erro: Organização não selecionada. Por favor, selecione uma organização.');
+      return;
     }
 
-    navigate('/app/assets');
+    try {
+      if (isEdit) {
+        // Atualizar asset existente
+        const { data, error } = await updateAsset({
+          id: id!,
+          orgId: activeOrgId,
+          description: formData.description || '',
+          categoryId: null, // Por enquanto, não usamos catálogo
+          location: formData.location || null,
+          supplierId: formData.supplierId || null,
+          status: formData.status,
+          acquisitionAt: formData.purchaseDate,
+          acquisitionVal: (formData.purchaseValueCents ?? 0) / 100,
+        });
+
+        if (error) {
+          console.error('Erro ao atualizar patrimônio:', error);
+          alert(`Erro ao atualizar patrimônio: ${error.message}`);
+          return;
+        }
+
+        console.log('Patrimônio atualizado com sucesso:', data);
+      } else {
+        // Criar novo asset
+        const { data, error } = await createAsset({
+          orgId: activeOrgId,
+          name: formData.name,                               // 👈 agora enviando o name do form
+          description: formData.description || '',
+          categoryId: null,                                  // continua null por enquanto
+          location: formData.location || null,
+          supplierId: formData.supplierId || null,
+          status: formData.status,
+          acquisitionAt: formData.purchaseDate,
+          acquisitionVal: (formData.purchaseValueCents ?? 0) / 100,
+        });
+
+        if (error) {
+          console.error('Erro ao criar patrimônio:', error);
+          alert(`Erro ao criar patrimônio: ${error.message}`);
+          return;
+        }
+
+        console.log('Patrimônio criado com sucesso:', data);
+      }
+
+      // Navegar para a listagem apenas se não houve erro
+      navigate('/app/assets');
+    } catch (error) {
+      console.error('Erro inesperado:', error);
+      alert('Erro inesperado. Tente novamente.');
+    }
   };
 
   return (
@@ -121,8 +161,8 @@ export default function AssetForm() {
                 required
               >
                 <option value="" disabled>Selecione uma categoria</option>
-                {COMMON_ASSET_CATEGORIES.map(category => (
-                  <option key={category} value={category}>{category}</option>
+                {COMMON_ASSET_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
                 ))}
                 {isEdit && existingAsset?.category && !COMMON_ASSET_CATEGORIES.includes(existingAsset.category) && (
                   <option value={existingAsset.category}>{existingAsset.category}</option>
@@ -167,14 +207,13 @@ export default function AssetForm() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Fornecedor</label>
-              <select
+              <SupplierCombobox
                 value={formData.supplierId}
-                onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Selecione (Opcional)</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+                onChange={(supplierId) => setFormData({ ...formData, supplierId: supplierId ?? '' })}
+                orgId={activeOrgId || ''}
+                placeholder="Selecione (Opcional)"
+                disabled={!activeOrgId}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Status *</label>

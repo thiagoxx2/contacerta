@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { listSuppliersByOrg } from '../services/supplierService';
+import { supabase } from '../lib/supabaseClient';
 import type { Supplier } from '../types';
 
 interface UseSuppliersOptions {
@@ -31,11 +32,11 @@ export function useSuppliers({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  // Debounce da busca
+  // Debounce da busca (250ms como solicitado)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search.trim());
-    }, 300);
+    }, 250);
     return () => clearTimeout(timer);
   }, [search]);
 
@@ -75,6 +76,37 @@ export function useSuppliers({
   useEffect(() => {
     fetchSuppliers();
   }, [fetchSuppliers]);
+
+  // Configurar Realtime para atualizações automáticas
+  useEffect(() => {
+    if (!orgId) return;
+
+    const channel = supabase
+      .channel(`suppliers-realtime-${orgId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'suppliers',
+        },
+        (payload) => {
+          // Verificar se a mudança é da organização atual
+          if (payload.new && (payload.new as any).orgId === orgId) {
+            // Refazer a busca para atualizar a lista
+            fetchSuppliers();
+          } else if (payload.old && (payload.old as any).orgId === orgId) {
+            // Para deletes, também refazer a busca
+            fetchSuppliers();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [orgId, fetchSuppliers]);
 
   const refetch = useCallback(async () => {
     await fetchSuppliers();

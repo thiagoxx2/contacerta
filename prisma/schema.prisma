@@ -9,101 +9,6 @@ datasource db {
 }
 
 /**
- * ===========================
- * Enums
- * ===========================
- */
-enum Role {
-  OWNER
-  ADMIN
-  TESOURARIA
-  SECRETARIA
-  CONTADOR
-  LEITURA
-}
-
-enum DocType {
-  PAYABLE // A Pagar
-  RECEIVABLE // A Receber
-}
-
-enum CostCenterType {
-  MINISTRY
-  EVENT
-  GROUP
-}
-
-enum DocStatus {
-  OPEN
-  PAID
-  OVERDUE // opcionalmente calculado; aqui persistido
-}
-
-enum MemberStatus {
-  ACTIVE
-  INACTIVE
-  VISITOR
-}
-
-enum SupplierType {
-  PF // Pessoa Física
-  PJ // Pessoa Jurídica
-}
-
-enum CategoryScope {
-  FINANCE
-  SUPPLIER
-  ASSET
-}
-
-enum FinanceKind {
-  INCOME
-  EXPENSE
-}
-
-enum AssetStatus {
-  ACTIVE
-  MAINTENANCE
-  DISPOSED
-}
-
-enum InviteStatus {
-  PENDING
-  ACCEPTED
-  REVOKED
-  EXPIRED
-}
-
-enum AuditAction {
-  CREATE
-  UPDATE
-  DELETE
-}
-
-/**
- * ===== Billing (planos/assinaturas) =====
- */
-enum PlanInterval {
-  MONTHLY
-  YEARLY
-}
-
-enum SubscriptionStatus {
-  INCOMPLETE
-  TRIALING
-  ACTIVE
-  PAST_DUE
-  CANCELED
-}
-
-enum BillingProvider {
-  STRIPE
-  PAGARME
-  MERCADO_PAGO
-  ASAAS
-}
-
-/**
  * =========================================
  * Núcleo multi-tenant: Organization & Membership
  * =========================================
@@ -111,26 +16,25 @@ enum BillingProvider {
 model Organization {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
-  taxId     String? // CNPJ/identificação opcional
+  taxId     String?
   active    Boolean  @default(true)
-  createdBy String?  @db.Uuid // auth.users.id (quem criou a organização)
+  createdBy String?  @db.Uuid
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relações
-  memberships      Membership[]
-  members          Member[]
-  suppliers        Supplier[]
-  costCenters      CostCenter[]
-  categories       Category[]
-  documents        Document[]
   assets           Asset[]
-  invites          OrgInvite[]
   audits           AuditLog[]
-  ministries       Ministry[]
+  categories       Category[]
+  costCenters      CostCenter[]
+  documents        Document[]
   memberMinistries MemberMinistry[]
-
-  subscriptions Subscription[] // << novo: assinaturas (uma org pode ter várias ao longo do tempo)
+  members          Member[]
+  memberships      Membership[]
+  ministries       Ministry[]
+  invites          OrgInvite[]
+  subscriptions    Subscription[]
+  suppliers        Supplier[]
 
   @@index([active])
   @@map("organizations")
@@ -139,30 +43,16 @@ model Organization {
 model Membership {
   id        String   @id @default(uuid()) @db.Uuid
   orgId     String   @db.Uuid
-  userId    String   @db.Uuid // Supabase auth.users.id (UUID)
+  userId    String   @db.Uuid
   role      Role
   createdAt DateTime @default(now())
 
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
-  // Se mapear 'auth.users', pode declarar a relação aqui:
-  // user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@unique([userId, orgId])
   @@index([orgId, role])
   @@map("memberships")
 }
-
-// (Opcional) Se usar Prisma Multi-Schema para enxergar auth.users:
-/**
- * model AuthUser {
- * id        String    @id @db.Uuid
- * email     String?
- * createdAt DateTime? @map("created_at")
- * @@schema("auth")
- * @@map("users")
- * }
- */
 
 /**
  * =========================================
@@ -177,16 +67,15 @@ model Member {
   email      String?
   phone      String?
   address    String?
-  ministries String[] // lista simples; pode virar relação no futuro
+  ministries String[]
   status     MemberStatus @default(ACTIVE)
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
-  //Relações
+  // Relações
+  documents        Document[]       @relation("DocMember")
   memberMinistries MemberMinistry[]
-
-  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  documents Document[]   @relation("DocMember")
+  org              Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId, status])
   @@index([orgId, fullName])
@@ -200,16 +89,19 @@ model Supplier {
   name      String
   email     String?
   phone     String?
-  taxId     String? // CPF/CNPJ (mascarar/validar na app)
-  bankInfo  String? // dados bancários (mínimos; cuidado LGPD)
+  taxId     String? // CPF/CNPJ sem máscara
+  bankInfo  String?
   address   String?
-  category  String? // livre/curta; para filtros simples
-  status    Boolean      @default(true) // ativo/inativo
+  category  String?
+  status    Boolean      @default(true)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  // Relações
   documents Document[]   @relation("DocSupplier")
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  // (Opcional) se quiser o lado inverso em Asset, adicione: assets Asset[]
+  Asset     Asset[]
 
   @@index([orgId, status])
   @@index([orgId, name])
@@ -217,25 +109,19 @@ model Supplier {
 }
 
 model CostCenter {
-  id    String @id @default(uuid()) @db.Uuid
-  orgId String @db.Uuid
+  id         String         @id @default(uuid()) @db.Uuid
+  orgId      String         @db.Uuid
+  name       String
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  ministryId String?        @unique(map: "uq_cost_centers_ministryId") @db.Uuid
+  type       CostCenterType @default(GROUP)
 
-  type CostCenterType @default(GROUP)
-
-  // Nome livre para não-ministry; quando MINISTRY será sincronizado com Ministry.name (via lógica/trigger)
-  name String
-
-  // Relação 1:1 (opcional) — UNIQUE garante um CC por Ministry
-  ministryId String?   @unique(map: "uq_cost_centers_ministryId") @db.Uuid
-  ministry   Ministry? @relation(fields: [ministryId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  // Relações
+  ministry  Ministry?    @relation(fields: [ministryId], references: [id])
   org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   documents Document[]
 
-  // Unicidade de nome por org para não duplicar nomes de CC
   @@unique([orgId, name])
   @@index([orgId])
   @@map("cost_centers")
@@ -246,13 +132,14 @@ model Category {
   orgId       String        @db.Uuid
   name        String
   scope       CategoryScope // FINANCE | SUPPLIER | ASSET
-  financeKind FinanceKind? // INCOME/EXPENSE (quando scope=FINANCE)
+  financeKind FinanceKind? // INCOME/EXPENSE quando scope=FINANCE
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  org       Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  documents Document[] // quando scope=FINANCE
-  assets    Asset[] // quando scope=ASSET
+  // Relações
+  assets    Asset[]
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  documents Document[]
 
   @@unique([orgId, scope, name])
   @@index([orgId, scope])
@@ -279,17 +166,16 @@ model Document {
   status       DocStatus @default(OPEN)
   paymentDate  DateTime?
   notes        String?
-  createdBy    String?   @db.Uuid // auth.users.id (quem criou)
+  createdBy    String?   @db.Uuid
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  // Relações
   category   Category?    @relation(fields: [categoryId], references: [id])
   costCenter CostCenter?  @relation(fields: [costCenterId], references: [id])
   supplier   Supplier?    @relation("DocSupplier", fields: [supplierId], references: [id])
   member     Member?      @relation("DocMember", fields: [memberId], references: [id])
-
-  // Observação: regra "supplierId XOR memberId" deve ser validada na aplicação (ou via trigger SQL).
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId, type])
   @@index([orgId, status])
@@ -302,28 +188,35 @@ model Document {
 
 /**
  * =========================================
- * Patrimônio (básico)
+ * Patrimônio
  * =========================================
  */
 model Asset {
   id             String      @id @default(uuid()) @db.Uuid
   orgId          String      @db.Uuid
-  description    String
+  name           String
+  code           String? // número de patrimônio (gerado por trigger se null)
+  description    String? // agora opcional, compatível com o form
   categoryId     String?     @db.Uuid
-  status         AssetStatus @default(ACTIVE)
-  location       String? // local/ministerio
-  responsible    String? // nome textual (pode virar FK para Member)
+  supplierId     String?     @db.Uuid
+  status         AssetStatus @default(IN_USE)
+  location       String?
+  responsible    String?
   acquisitionAt  DateTime?
   acquisitionVal Decimal?    @db.Decimal(14, 2)
   notes          String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
+  // Relações
   org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   category Category?    @relation(fields: [categoryId], references: [id])
+  supplier Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
+  @@unique([orgId, code]) // unicidade do patrimônio por organização (permite múltiplos NULL)
   @@index([orgId, status])
   @@index([orgId, categoryId])
+  @@index([orgId, supplierId])
   @@map("assets")
 }
 
@@ -340,7 +233,7 @@ model OrgInvite {
   token     String       @unique
   status    InviteStatus @default(PENDING)
   expiresAt DateTime
-  invitedBy String?      @db.Uuid // auth.users.id
+  invitedBy String?      @db.Uuid
   createdAt DateTime     @default(now())
 
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -352,7 +245,7 @@ model OrgInvite {
 model AuditLog {
   id        String      @id @default(uuid()) @db.Uuid
   orgId     String      @db.Uuid
-  userId    String?     @db.Uuid // auth.users.id
+  userId    String?     @db.Uuid
   table     String
   rowId     String
   action    AuditAction
@@ -375,29 +268,29 @@ model Plan {
   id              String           @id @default(uuid()) @db.Uuid
   name            String
   interval        PlanInterval
-  amount          Decimal          @db.Decimal(10, 2) // valor por período
+  amount          Decimal          @db.Decimal(10, 2)
   currency        String           @default("BRL")
   trialDays       Int?
   isActive        Boolean          @default(true)
   provider        BillingProvider?
-  providerPriceId String? // ID do preço/plano no provedor (ex.: Stripe Price ID)
+  providerPriceId String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
   features      PlanFeature[]
   subscriptions Subscription[]
 
-  @@unique([name, interval]) // evita duplicidade de plano por periodicidade
+  @@unique([name, interval])
   @@map("plans")
 }
 
 model PlanFeature {
   id       String  @id @default(uuid()) @db.Uuid
   planId   String  @db.Uuid
-  key      String // ex.: ASSETS_ENABLED, COST_CENTER_LIMIT, etc.
-  label    String // rótulo amigável para exibir na landing
+  key      String
+  label    String
   included Boolean @default(true)
-  limitInt Int? // limite numérico quando aplicável (ex.: qtd. centros de custo)
+  limitInt Int?
 
   plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
@@ -440,11 +333,10 @@ model Ministry {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  org     Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  members MemberMinistry[]
-
-  // NEW: back-relation 1:1 com CostCenter
+  // Relações
   costCenter CostCenter?
+  members    MemberMinistry[]
+  org        Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, name])
   @@index([orgId, active])
@@ -456,18 +348,118 @@ model MemberMinistry {
   orgId      String    @db.Uuid
   memberId   String    @db.Uuid
   ministryId String    @db.Uuid
-  role       String? // pode evoluir para enum depois (LEADER/ASSISTANT/MEMBER)
+  role       String?
   sinceDate  DateTime?
   untilDate  DateTime?
   notes      String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   member   Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
   ministry Ministry     @relation(fields: [ministryId], references: [id], onDelete: Cascade)
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([orgId, ministryId])
   @@index([orgId, memberId])
   @@map("member_ministries")
+}
+
+/**
+ * ===========================
+ * Enums
+ * ===========================
+ */
+enum Role {
+  OWNER
+  ADMIN
+  TESOURARIA
+  SECRETARIA
+  CONTADOR
+  LEITURA
+}
+
+enum DocType {
+  PAYABLE
+  RECEIVABLE
+}
+
+enum CostCenterType {
+  MINISTRY
+  EVENT
+  GROUP
+}
+
+enum DocStatus {
+  OPEN
+  PAID
+  OVERDUE
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  VISITOR
+}
+
+enum SupplierType {
+  PF
+  PJ
+}
+
+enum CategoryScope {
+  FINANCE
+  SUPPLIER
+  ASSET
+}
+
+enum FinanceKind {
+  INCOME
+  EXPENSE
+}
+
+/**
+ * Substitui o enum antigo de AssetStatus.
+ * Use estes valores no app (faça o mapeamento se precisar).
+ */
+enum AssetStatus {
+  IN_USE
+  IN_STORAGE
+  IN_MAINTENANCE
+  DISPOSED
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+/**
+ * ===== Billing (planos/assinaturas) =====
+ */
+enum PlanInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum BillingProvider {
+  STRIPE
+  PAGARME
+  MERCADO_PAGO
+  ASAAS
 }
