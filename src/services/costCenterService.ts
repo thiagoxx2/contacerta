@@ -64,18 +64,41 @@ const handleSupabaseError = (error: any): string => {
   }
 };
 
-export const listCostCentersByOrg = async (orgId: string): Promise<DBCostCenter[]> => {
+export interface ListCostCentersOptions {
+  q?: string;
+  type?: 'all' | 'ministry' | 'event' | 'group';
+}
+
+export const listCostCentersByOrg = async (
+  orgId: string, 
+  opts: ListCostCentersOptions = {}
+): Promise<DBCostCenter[]> => {
   if (!orgId) {
     console.error('Organization ID is required to list cost centers.');
     return [];
   }
 
   try {
-    const { data, error } = await supabase
+    const { q, type = 'all' } = opts;
+    
+    let query = supabase
       .from('cost_centers')
       .select('id, orgId, type, name, ministryId, createdAt, updatedAt')
       .eq('orgId', orgId)
       .order('name');
+
+    // Filtrar por tipo
+    if (type !== 'all') {
+      const dbType = mapUITypeToDB(type);
+      query = query.eq('type', dbType);
+    }
+
+    // Filtrar por busca (nome)
+    if (q) {
+      query = query.ilike('name', `%${q}%`);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching cost centers:', error);

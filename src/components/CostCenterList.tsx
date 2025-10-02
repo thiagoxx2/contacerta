@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp, useConfirm } from '../context/AppContext';
 import { useOrg } from '../context/OrgContext';
-import { CostCenter } from '../types';
+import { useCostCenters } from '../hooks/useCostCenters';
 import { deleteCostCenter } from '../services/costCenterService';
 import { 
   Edit, 
@@ -12,7 +11,6 @@ import {
   Briefcase,
   Calendar,
   Users,
-  CheckCircle,
   XCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -27,13 +25,21 @@ const formatCurrency = (value: number) => {
 
 export default function CostCenterList() {
   usePageTitle('Centros de Custo | ContaCerta');
-  const { state, dispatch } = useApp();
+  const { state } = useApp();
   const { activeOrgId } = useOrg();
   const confirm = useConfirm();
-  const { costCenters = [], documents = [] } = state;
+  const { documents = [] } = state;
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'ministry' | 'event' | 'group'>('all');
+  const {
+    costCenters,
+    loading,
+    error,
+    search,
+    setSearch,
+    filterType,
+    setFilterType,
+    refetch,
+  } = useCostCenters({ orgId: activeOrgId || '' });
 
   const getCostCenterBalance = (id: string) => {
     return documents
@@ -43,15 +49,8 @@ export default function CostCenterList() {
       }, 0);
   };
 
-  const filteredCostCenters = costCenters.filter(cc => {
-    const matchesSearch = 
-      cc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (cc.description && cc.description.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesType = filterType === 'all' || cc.type === filterType;
-    
-    return matchesSearch && matchesType;
-  });
+  // Os filtros agora são aplicados no hook, então usamos costCenters diretamente
+  const filteredCostCenters = costCenters;
 
   const handleDelete = (id: string) => {
     confirm({
@@ -65,7 +64,7 @@ export default function CostCenterList() {
 
         try {
           await deleteCostCenter(id, activeOrgId);
-          dispatch({ type: 'DELETE_COST_CENTER', payload: id });
+          await refetch(); // Recarregar dados do Supabase
         } catch (error) {
           console.error('Erro ao excluir centro de custo:', error);
           // Aqui você pode adicionar um toast de erro se tiver um sistema de notificações
@@ -74,7 +73,7 @@ export default function CostCenterList() {
     });
   };
 
-  const getTypeInfo = (type: CostCenter['type']) => {
+  const getTypeInfo = (type: 'ministry' | 'event' | 'group') => {
     switch (type) {
       case 'ministry':
         return { icon: Briefcase, text: 'Ministério', color: 'text-blue-600 bg-blue-50' };
@@ -112,8 +111,8 @@ export default function CostCenterList() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar por nome ou descrição..."
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -135,8 +134,32 @@ export default function CostCenterList() {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Carregando centros de custo...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex">
+            <XCircle className="w-5 h-5 text-red-400 mr-2" />
+            <div>
+              <h3 className="text-sm font-medium text-red-800">Erro ao carregar centros de custo</h3>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cost Center List */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      {!loading && !error && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -185,14 +208,15 @@ export default function CostCenterList() {
           </table>
         </div>
 
-        {filteredCostCenters.length === 0 && (
-          <div className="text-center py-12">
-            <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-sm font-medium text-gray-900 mb-1">Nenhum centro de custo encontrado</h3>
-            <p className="text-sm text-gray-500">Tente ajustar os filtros ou criar um novo.</p>
-          </div>
-        )}
-      </div>
+          {filteredCostCenters.length === 0 && (
+            <div className="text-center py-12">
+              <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-sm font-medium text-gray-900 mb-1">Nenhum centro de custo encontrado</h3>
+              <p className="text-sm text-gray-500">Tente ajustar os filtros ou criar um novo.</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
