@@ -3,7 +3,7 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"
   CI = "true"
 
 # SPA redirect: envia qualquer rota para o index.html
