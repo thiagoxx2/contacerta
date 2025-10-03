@@ -67,48 +67,60 @@ const handleSupabaseError = (error: any): string => {
 export interface ListCostCentersOptions {
   q?: string;
   type?: 'all' | 'ministry' | 'event' | 'group';
+  limit?: number;
 }
 
 export const listCostCentersByOrg = async (
   orgId: string, 
   opts: ListCostCentersOptions = {}
-): Promise<DBCostCenter[]> => {
+): Promise<{ data: DBCostCenter[] | null; error: { code: string; message: string } | null }> => {
   if (!orgId) {
-    console.error('Organization ID is required to list cost centers.');
-    return [];
+    return { data: null, error: { code: 'MISSING_ORG_ID', message: 'Organization ID is required' } };
   }
 
   try {
-    const { q, type = 'all' } = opts;
+    const { q, type = 'all', limit = 50 } = opts;
     
     let query = supabase
       .from('cost_centers')
-      .select('id, orgId, type, name, ministryId, createdAt, updatedAt')
+      .select('id, orgId, name, type')
       .eq('orgId', orgId)
-      .order('name');
+      .order('name', { ascending: true })
+      .limit(limit);
 
-    // Filtrar por tipo
+    // Filtrar por busca (apenas nome)
+    if (q) {
+      query = query.ilike('name', `%${q}%`);
+    }
+
+    // Filtrar por tipo (mapear para enum do DB)
     if (type !== 'all') {
       const dbType = mapUITypeToDB(type);
       query = query.eq('type', dbType);
     }
 
-    // Filtrar por busca (nome)
-    if (q) {
-      query = query.ilike('name', `%${q}%`);
-    }
-
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching cost centers:', error);
-      throw new Error(handleSupabaseError(error));
+      return { 
+        data: null, 
+        error: { 
+          code: error.code ?? 'UNKNOWN', 
+          message: error.message 
+        } 
+      };
     }
 
-    return data || [];
+    return { data: data || [], error: null };
   } catch (error) {
     console.error('Error in listCostCentersByOrg:', error);
-    throw error;
+    return { 
+      data: null, 
+      error: { 
+        code: 'UNKNOWN', 
+        message: 'Erro inesperado ao buscar centros de custo' 
+      } 
+    };
   }
 };
 

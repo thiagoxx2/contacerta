@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useOrg } from '../context/OrgContext';
@@ -6,8 +6,9 @@ import { Document } from '../types';
 import { Save, Upload, X, ArrowRightLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePageTitle } from '../hooks/usePageTitle';
-import CategoryCombobox from './CategoryCombobox';
 import SupplierCombobox from './SupplierCombobox';
+import CostCenterCombobox from './CostCenterCombobox';
+import { PAYABLE_CATEGORIES, RECEIVABLE_CATEGORIES } from '../constants/financeCategories';
 
 export default function DocumentForm() {
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ export default function DocumentForm() {
   
   const { state, dispatch } = useApp();
   const { activeOrgId } = useOrg();
-  const { documents = [], members = [], costCenters = [] } = state;
+  const { documents = [], members = [] } = state;
 
   const existingDocument = isEdit ? documents.find(d => d.id === id) : undefined;
 
@@ -44,12 +45,18 @@ export default function DocumentForm() {
     paymentDate: existingDocument?.paymentDate || '',
   });
 
+  // Escolher categorias baseado no tipo
+  const categoryOptions = useMemo(
+    () => (formData.type === 'payable' ? PAYABLE_CATEGORIES : RECEIVABLE_CATEGORIES),
+    [formData.type]
+  );
+
   // Reset campos quando o tipo muda
   useEffect(() => {
     if (formData.type === 'payable') {
-      setFormData(prev => ({ ...prev, memberId: null }));
+      setFormData(prev => ({ ...prev, memberId: null, categoryId: '' }));
     } else {
-      setFormData(prev => ({ ...prev, supplierId: null }));
+      setFormData(prev => ({ ...prev, supplierId: null, categoryId: '' }));
     }
   }, [formData.type]);
 
@@ -100,7 +107,7 @@ export default function DocumentForm() {
     navigate(path);
   };
 
-  const activeCostCenters = costCenters;
+  // Removido: activeCostCenters agora vem do CostCenterCombobox
 
   return (
     <motion.div
@@ -134,15 +141,13 @@ export default function DocumentForm() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Centro de Custo *</label>
-              <select
-                value={formData.costCenterId}
-                onChange={(e) => setFormData({ ...formData, costCenterId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <CostCenterCombobox
+                value={formData.costCenterId || undefined}
+                onChange={(id) => setFormData(prev => ({ ...prev, costCenterId: id ?? '' }))}
+                orgId={activeOrgId || ''}
+                placeholder="Selecione um centro de custo"
                 required
-              >
-                <option value="">Selecione um centro de custo</option>
-                {activeCostCenters.map(cc => <option key={cc.id} value={cc.id}>{cc.name}</option>)}
-              </select>
+              />
             </div>
           </div>
           
@@ -155,7 +160,7 @@ export default function DocumentForm() {
               <SupplierCombobox
                 value={formData.supplierId ?? undefined}
                 onChange={(supplierId) => setFormData({ ...formData, supplierId: supplierId ?? null })}
-                orgId={activeOrgId}
+                orgId={activeOrgId || ''}
                 placeholder="Selecione (Opcional)"
               />
             ) : (
@@ -189,13 +194,21 @@ export default function DocumentForm() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Categoria *</label>
-              <CategoryCombobox
-                value={formData.categoryId}
-                onChange={(categoryId) => setFormData({ ...formData, categoryId })}
-                documentType={formData.type}
-                placeholder={formData.type === 'payable' ? 'Ex: Aluguel' : 'Ex: Dízimo'}
+              <select
+                value={formData.categoryId || ''}
+                onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
-              />
+              >
+                <option value="" disabled>Selecione uma categoria</option>
+                {categoryOptions.map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+                {/* Garante edição de valores antigos fora da lista */}
+                {isEdit && formData.categoryId && !categoryOptions.includes(formData.categoryId) && (
+                  <option value={formData.categoryId}>{formData.categoryId}</option>
+                )}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Valor (R$) *</label>

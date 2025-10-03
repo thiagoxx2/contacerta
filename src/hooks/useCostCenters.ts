@@ -11,7 +11,6 @@ interface UseCostCentersResult {
     id: string;
     orgId: string;
     name: string;
-    description?: string;
     type: 'ministry' | 'event' | 'group';
     ministryId?: string | null;
     createdAt: string;
@@ -64,16 +63,15 @@ export function useCostCenters({
       });
 
       // Mapear dados do banco para o formato da UI
-      const mappedCostCenters = result.map((cc: DBCostCenter) => ({
+      const mappedCostCenters = result.data?.map((cc: DBCostCenter) => ({
         id: cc.id,
         orgId: cc.orgId,
         name: cc.name,
-        description: undefined, // Campo não existe no banco atual
         type: mapDBTypeToUI(cc.type),
         ministryId: cc.ministryId,
         createdAt: cc.createdAt,
         updatedAt: cc.updatedAt,
-      }));
+      })) || [];
 
       setCostCenters(mappedCostCenters);
     } catch (err) {

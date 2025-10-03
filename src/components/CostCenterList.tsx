@@ -184,7 +184,6 @@ export default function CostCenterList() {
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{cc.name}</div>
-                      <div className="text-sm text-gray-500 truncate max-w-xs">{cc.description}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
