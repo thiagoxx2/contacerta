@@ -182,9 +182,7 @@ export const updateCostCenter = async (input: UpdateCostCenterInput): Promise<DB
 
   try {
     // Preparar dados de atualização
-    const updateData: Record<string, any> = {
-      updatedAt: new Date().toISOString(),
-    };
+    const updateData: Record<string, any> = {};
 
     if (input.type !== undefined) {
       updateData.type = input.type;

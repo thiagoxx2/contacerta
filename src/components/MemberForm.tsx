@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { useOrgMinistries } from '../hooks/useOrgMinistries';
 import { listMinistryIdsByMember, setMemberMinistries } from '../services/memberMinistriesService';
+import { createMember, updateMember } from '../services/memberService';
 
 export default function MemberForm() {
   const navigate = useNavigate();
@@ -85,56 +86,49 @@ export default function MemberForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!activeOrgId) {
       alert('Organização não selecionada. Por favor, selecione uma organização.');
       return;
     }
-    
-    const memberId = existingMember?.id || crypto.randomUUID();
-    
-    const member: Member = {
-      id: memberId,
-      name: formData.name,
-      email: formData.email || undefined,
-      phone: formData.phone || undefined,
-      birthDate: formData.birthDate,
-      gender: formData.gender,
-      maritalStatus: formData.maritalStatus,
-      membershipDate: formData.membershipDate,
-      baptismDate: formData.baptismDate || undefined,
-      status: formData.status,
-      ministries: selectedMinistryIds, // Usar os IDs selecionados
-      notes: formData.notes || undefined,
-      profilePictureUrl: existingMember?.profilePictureUrl || 'https://i.pravatar.cc/150?u=' + memberId,
-      address: formData.street ? {
-        street: formData.street,
-        number: formData.number,
-        complement: formData.complement || undefined,
-        neighborhood: formData.neighborhood,
-        city: formData.city,
-        state: formData.state,
-        zipCode: formData.zipCode,
-      } : undefined,
-      createdAt: existingMember?.createdAt || new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-    };
 
     try {
-      // Atualizar o store local
+      let memberId = existingMember?.id;
+
       if (isEdit) {
-        dispatch({ type: 'UPDATE_MEMBER', payload: member });
+        const { data, error } = await updateMember(id!, activeOrgId, {
+          fullName: formData.name,
+          email: formData.email || null,
+          phone: formData.phone || null,
+          birthDate: formData.birthDate,
+          status: formData.status as any,
+        });
+        if (error) { console.error(error); alert('Erro ao atualizar membro'); return; }
+        memberId = data!.id;
+        // opcional: dispatch local se ainda estiver usando store
+        dispatch({ type: 'UPDATE_MEMBER', payload: { ...existingMember!, name: formData.name } });
       } else {
-        dispatch({ type: 'ADD_MEMBER', payload: member });
+        const { data, error } = await createMember({
+          orgId: activeOrgId,
+          fullName: formData.name,
+          email: formData.email || null,
+          phone: formData.phone || null,
+          birthDate: formData.birthDate,
+          status: formData.status as any,
+        });
+        if (error) { console.error(error); alert('Erro ao criar membro'); return; }
+        memberId = data!.id;
+        // opcional: dispatch local se ainda estiver usando store
+        dispatch({ type: 'ADD_MEMBER', payload: { id: memberId, name: formData.name } as any });
       }
 
-      // Persistir vínculos no Supabase
-      await setMemberMinistries(memberId, activeOrgId, selectedMinistryIds);
+      // Persistir vínculos de ministérios DEPOIS que o membro existe no DB
+      await setMemberMinistries(memberId!, activeOrgId, selectedMinistryIds);
 
       navigate('/app/members');
-    } catch (error) {
-      console.error('Erro ao salvar vínculos de ministérios:', error);
-      alert('Erro ao salvar os ministérios do membro. Tente novamente.');
+    } catch (err) {
+      console.error('Erro inesperado ao salvar membro:', err);
+      alert('Erro inesperado ao salvar membro. Tente novamente.');
     }
   };
 

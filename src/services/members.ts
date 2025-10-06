@@ -92,7 +92,7 @@ export async function updateMember(id: string, input: MemberUpdateInput) {
   try {
     const { data, error } = await supabase
       .from('members')
-      .update({ ...input, updatedAt: new Date().toISOString() })
+      .update(input)
       .eq('id', id)
       .select()
       .single();
