@@ -61,3 +61,21 @@ export async function updateMember(id: string, orgId: string, input: Partial<{
 
   return { data, error };
 }
+
+export async function listMembersByOrg(orgId: string, q = '', limit = 50) {
+  let query = supabase
+    .from('members')
+    .select('id, fullName, status')
+    .eq('orgId', orgId)
+    .eq('status', 'ACTIVE')
+    .order('fullName', { ascending: true })
+    .limit(limit);
+
+  if (q) query = query.ilike('fullName', `%${q}%`);
+
+  const { data, error } = await query;
+  if (error) return { data: null, error };
+
+  const mapped = (data ?? []).map(m => ({ id: m.id, name: m.fullName }));
+  return { data: mapped, error: null };
+}

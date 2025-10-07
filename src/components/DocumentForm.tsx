@@ -7,7 +7,9 @@ import { Save, Upload, X, ArrowRightLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePageTitle } from '../hooks/usePageTitle';
 import SupplierCombobox from './SupplierCombobox';
+import MemberCombobox from './MemberCombobox';
 import CostCenterCombobox from './CostCenterCombobox';
+import CurrencyInput from './CurrencyInput';
 import { PAYABLE_CATEGORIES, RECEIVABLE_CATEGORIES } from '../constants/financeCategories';
 
 export default function DocumentForm() {
@@ -25,7 +27,7 @@ export default function DocumentForm() {
   
   const { state, dispatch } = useApp();
   const { activeOrgId } = useOrg();
-  const { documents = [], members = [] } = state;
+  const { documents = [] } = state;
 
   const existingDocument = isEdit ? documents.find(d => d.id === id) : undefined;
 
@@ -34,7 +36,9 @@ export default function DocumentForm() {
   const [formData, setFormData] = useState({
     type: initialType as 'payable' | 'receivable',
     description: existingDocument?.description || '',
-    amount: existingDocument?.amount?.toString() || '',
+    amountCents: existingDocument?.amount != null
+      ? Math.round(Number(existingDocument.amount) * 100)
+      : null,
     dueDate: existingDocument?.dueDate || '',
     issueDate: existingDocument?.issueDate || new Date().toISOString().split('T')[0],
     categoryId: existingDocument?.categoryId || null,
@@ -65,11 +69,16 @@ export default function DocumentForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (formData.amountCents == null || formData.amountCents <= 0) {
+      alert('Informe um valor válido.');
+      return;
+    }
+    
     const newDocument: Document = {
       id: existingDocument?.id || crypto.randomUUID(),
       type: formData.type,
       description: formData.description,
-      amount: parseFloat(formData.amount),
+      amount: (formData.amountCents ?? 0) / 100,
       dueDate: formData.dueDate,
       issueDate: formData.issueDate,
       status: formData.status,
@@ -164,19 +173,12 @@ export default function DocumentForm() {
                 placeholder="Selecione (Opcional)"
               />
             ) : (
-              <select
-                value={formData.memberId || ''}
-                onChange={(e) => setFormData({ 
-                  ...formData, 
-                  memberId: e.target.value || null
-                })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Selecione (Opcional)</option>
-                {members.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
+              <MemberCombobox
+                value={formData.memberId ?? undefined}
+                onChange={(memberId) => setFormData(prev => ({ ...prev, memberId: memberId ?? null }))}
+                orgId={activeOrgId || ''}
+                placeholder="Selecione (Opcional)"
+              />
             )}
           </div>
 
@@ -212,13 +214,11 @@ export default function DocumentForm() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Valor (R$) *</label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <CurrencyInput
+                value={formData.amountCents}
+                onChange={(cents) => setFormData(prev => ({ ...prev, amountCents: cents }))}
                 required
+                placeholder="R$ 0,00"
               />
             </div>
           </div>
