@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { ReportFilters, ReportData, Document } from '../types';
+import { ReportFilters, ReportData } from '../types';
 import { 
   Download, 
   FileText, 
@@ -11,7 +11,8 @@ import {
 import { motion } from 'framer-motion';
 import { format, isWithinInterval, parseISO } from 'date-fns';
 import { usePageTitle } from '../hooks/usePageTitle';
-import { utils, writeFile } from 'xlsx';
+import { utils } from 'xlsx';
+import { exportFinancialReportXlsx, FinancialReportItem } from '../utils/exportFinancialReportXlsx';
 
 export default function Reports() {
   usePageTitle('Relatórios | ContaCerta');
@@ -55,7 +56,7 @@ export default function Reports() {
 
       const matchesType = filters.type === 'all' || doc.type === filters.type;
       const matchesStatus = filters.status === 'all' || doc.status === filters.status;
-      const matchesCategory = !filters.category || doc.category.toLowerCase().includes(filters.category.toLowerCase());
+      const matchesCategory = !filters.category || (doc.categoryId && doc.categoryId.toLowerCase().includes(filters.category.toLowerCase()));
       const matchesCostCenter = filters.costCenterId === 'all' || doc.costCenterId === filters.costCenterId;
 
       return isInDateRange && matchesType && matchesStatus && matchesCategory && matchesCostCenter;
@@ -75,23 +76,26 @@ export default function Reports() {
     return reportData.documents.map(doc => ({
       'Tipo': doc.type === 'payable' ? 'A Pagar' : 'A Receber',
       'Descrição': doc.description,
-      'Categoria': doc.category,
+      'Categoria': doc.categoryId || '',
       'Centro de Custo': getCostCenterNameById(doc.costCenterId),
       'Valor': doc.amount,
       'Data Emissão': format(parseISO(doc.issueDate), 'dd/MM/yyyy'),
       'Data Vencimento': format(parseISO(doc.dueDate), 'dd/MM/yyyy'),
       'Status': doc.status === 'paid' ? 'Pago' : doc.status === 'overdue' ? 'Vencido' : 'Em Aberto',
-      'Origem/Destino': getNameById(doc.type, doc.supplierId || doc.memberId),
+      'Origem/Destino': getNameById(doc.type, doc.supplierId || doc.memberId || undefined),
       'Data Pagamento': doc.paymentDate ? format(parseISO(doc.paymentDate), 'dd/MM/yyyy') : ''
     }));
   };
 
-  const exportToXLSX = () => {
-    const data = getExportData();
-    const ws = utils.json_to_sheet(data);
-    const wb = utils.book_new();
-    utils.book_append_sheet(wb, ws, 'Relatorio');
-    writeFile(wb, `relatorio_contacerta_${format(new Date(), 'yyyyMMdd')}.xlsx`);
+  const exportToXLSX = async () => {
+    const data: FinancialReportItem[] = reportData.documents.map(doc => ({
+      date: filters.reportBasis === 'cash' && doc.paymentDate ? doc.paymentDate : doc.issueDate,
+      amount: doc.amount,
+      type: doc.type,
+      description: doc.description
+    }));
+    
+    await exportFinancialReportXlsx(data);
   };
 
   const exportToCSV = () => {
@@ -228,7 +232,7 @@ export default function Reports() {
                   <tr key={doc.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{doc.description}</div>
-                      <div className="text-sm text-gray-500">{doc.category}</div>
+                      <div className="text-sm text-gray-500">{doc.categoryId || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {getCostCenterNameById(doc.costCenterId)}
